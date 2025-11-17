@@ -5,18 +5,30 @@ import Link from "next/link";
 import Footer from "../components/Footer";
 
 type Kopi = {
-    nama: string;
-    notes: string;
-    aroma: string;
-    acidity: string;
-    seduh: string;
+  id: number;
+  nama: string;
+  notes?: string;
+  aroma?: string;
+  acidity?: string;
+  seduh?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+type KopiForm = {
+  nama: string;
+  notes?: string;
+  aroma?: string;
+  acidity?: string;
+  seduh?: string;
 };
 
 export default function KopiPage() {
   const [kopiList, setKopiList] = useState<Kopi[]>([]);
-  const [mounted, setMounted] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   
-  const [form, setForm] = useState<Kopi>({
+  const [form, setForm] = useState<KopiForm>({
     nama: "",
     notes: "",
     aroma: "",
@@ -25,35 +37,63 @@ export default function KopiPage() {
   });
 
   useEffect(() => {
-    const data = localStorage.getItem("kopiList");
-    if (data) {
+    const fetchList = async () => {
+      setLoading(true);
       try {
-        setKopiList(JSON.parse(data));
+        const res = await fetch('/api/kopi');
+        if (!res.ok) throw new Error('Gagal memuat daftar kopi');
+        const data: Kopi[] = await res.json();
+        setKopiList(data);
       } catch (e) {
-        console.error("Error loading data:", e);
+        console.error(e);
+      } finally {
+        setLoading(false);
       }
-    }
-    setMounted(true);
+    };
+    fetchList();
   }, []);
 
-  useEffect(() => {
-    if (mounted) {
-      localStorage.setItem("kopiList", JSON.stringify(kopiList));
-    }
-  }, [kopiList, mounted]);
-
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    const name = e.target.name as keyof KopiForm;
+    setForm({ ...form, [name]: e.target.value });
   };
 
-  const aturAdd = () => {
+  const aturAdd = async () => {
     if (!form.nama.trim()) return alert("Nama kopi wajib diisi");
-    setKopiList([...kopiList, form]);
-    setForm({ nama: "", notes: "", aroma: "", acidity: "", seduh: "" });
+    setSaving(true);
+    try {
+      const res = await fetch('/api/kopi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || 'Gagal menambah kopi');
+      }
+      const created: Kopi = await res.json();
+      setKopiList((s) => [created, ...s]);
+      setForm({ nama: '', notes: '', aroma: '', acidity: '', seduh: '' });
+    } catch (e) {
+      console.error(e);
+      alert('Gagal menambah kopi');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const aturDelete = (index: number) => {
-    setKopiList(kopiList.filter((_, i) => i !== index));
+  const aturDelete = async (index: number) => {
+    const item = kopiList[index];
+    if (!item) return;
+    if (!confirm(`Hapus kopi "${item.nama}"?`)) return;
+    try {
+      const res = await fetch(`/api/kopi/${item.id}`, { method: 'DELETE' });
+      if (!res.ok && res.status !== 204) throw new Error('Gagal menghapus');
+      setKopiList((s) => s.filter((_, i) => i !== index));
+    } catch (e) {
+      console.error(e);
+      alert('Gagal menghapus kopi');
+    }
   };
 
   return (
@@ -137,9 +177,11 @@ export default function KopiPage() {
       </div>
       <h4 className="mb-3 fw-bold">Daftar Kopi ({kopiList.length})</h4>
 
-      {kopiList.length === 0 && (
+      {loading ? (
+        <p className="text-center">Loading...</p>
+      ) : kopiList.length === 0 ? (
         <p className="text-muted text-center">Belum ada data kopi.</p>
-      )}
+      ) : null}
 
       <div className="row g-3">
         {kopiList.map((kopi, index) => (
@@ -152,18 +194,11 @@ export default function KopiPage() {
                 </div>
 
                 <div>
-                  <Link
-                    href={`/kopi/${index}`}
-                    className="btn btn-sm btn-outline-dark me-2"
-                    scroll={false}
-                  >
+                  <Link href={`/kopi/${kopi.id}`} className="btn btn-sm btn-outline-dark me-2" scroll={false}>
                     Detail
                   </Link>
 
-                  <button
-                    className="btn btn-sm btn-danger"
-                    onClick={() => aturDelete(index)}
-                  >
+                  <button className="btn btn-sm btn-danger" onClick={() => aturDelete(index)}>
                     Hapus
                   </button>
                 </div>
